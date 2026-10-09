@@ -1,0 +1,21 @@
+# Binaries
+bb-fast
+bb-fast-*
+fast
+fast-*
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+
+# Build directories
+build/
+dist/
+release_files/
+
+# IDE & OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
