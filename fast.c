@@ -9,12 +9,12 @@
 #include <signal.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <getopt.h>
 
 #ifdef _WIN32
   #include <winsock2.h>
   #include <ws2tcpip.h>
   #include <windows.h>
-  #include <getopt.h>
   #define CLOSE_SOCKET closesocket
   #define SLEEP_SEC(s) Sleep((s) * 1000)
   #define USLEEP(us) Sleep((us) / 1000)
@@ -55,6 +55,7 @@ static const char* my_strcasestr(const char *haystack, const char *needle) {
     return NULL;
 }
 
+#define APP_VERSION "1.0.1"
 #define MAX_SERVERS 32
 #define DEFAULT_BLOCK_SIZE 26214400ULL  // 25MB (25 * 1024 * 1024)
 #define BUF_SIZE (128 * 1024)
@@ -866,8 +867,8 @@ static double run_benchmark(int is_upload, int threads, int duration, int timeou
 static void print_usage(const char *prog) {
     printf("Usage: %s [options]\n", prog);
     printf("Options:\n");
-    printf("  -U            Enable upload test (Default: download only. Performs download then upload)\n");
-    printf("  --only-upload Upload test only (Skip download test)\n");
+    printf("  -U, --upload  Enable upload test (Default: download only. Performs download then upload)\n");
+    printf("  -O, --only-upload Upload test only (Skip download test)\n");
     printf("  -L            List nearby Fast.com (Netflix) servers and their latencies\n");
     printf("  -s <index>    Specify server index (1-based from -L list)\n");
     printf("  -u <URL>      Specify a custom Fast.com speedtest target URL directly\n");
@@ -875,10 +876,12 @@ static void print_usage(const char *prog) {
     printf("  -t <threads>  Number of concurrent streams/threads (Default: 4)\n");
     printf("  -T <sec>      Socket connection timeout in seconds (Default: 10)\n");
     printf("  -b <bytes>    Block size in bytes for chunk requests (Default: 26214400 / 25MB)\n");
-    printf("  -h            Show this help message\n\n");
+    printf("  -v, --version Show version information\n");
+    printf("  -h, --help    Show this help message\n\n");
     printf("Examples:\n");
     printf("  %s                   # Default: auto-select best Netflix Fast.com server & test download\n", prog);
     printf("  %s -U                # Full test: download + upload\n", prog);
+    printf("  %s -O                # Upload test only\n", prog);
     printf("  %s -L                # List available Fast.com servers & latencies\n", prog);
     printf("  %s -s 1 -U           # Test server #1 with upload & download\n", prog);
     printf("  %s -d 15 -t 8        # 8 streams for 15 seconds\n", prog);
@@ -905,16 +908,34 @@ int main(int argc, char *argv[]) {
     }
 #endif
 
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--only-upload") == 0) {
-            only_upload = 1;
-            test_upload = 1;
-        }
-    }
+    static struct option long_options[] = {
+        {"only-upload", no_argument,       0, 'O'},
+        {"upload",      no_argument,       0, 'U'},
+        {"version",     no_argument,       0, 'v'},
+        {"help",        no_argument,       0, 'h'},
+        {"list",        no_argument,       0, 'L'},
+        {"server",      required_argument, 0, 's'},
+        {"url",         required_argument, 0, 'u'},
+        {"duration",    required_argument, 0, 'd'},
+        {"threads",     required_argument, 0, 't'},
+        {"timeout",     required_argument, 0, 'T'},
+        {"block-size",  required_argument, 0, 'b'},
+        {0, 0, 0, 0}
+    };
 
     int opt;
-    while ((opt = getopt(argc, argv, "ULs:u:d:t:T:b:h")) != -1) {
+    while ((opt = getopt_long(argc, argv, "ULOs:u:d:t:T:b:hv", long_options, NULL)) != -1) {
         switch (opt) {
+            case 'O':
+                only_upload = 1;
+                test_upload = 1;
+                break;
+            case 'v':
+                printf("bb-fast version %s\n", APP_VERSION);
+#ifdef _WIN32
+                WSACleanup();
+#endif
+                return 0;
             case 'U':
                 test_upload = 1;
                 break;
@@ -944,12 +965,17 @@ int main(int argc, char *argv[]) {
                 if (g_block_size == 0) g_block_size = DEFAULT_BLOCK_SIZE;
                 break;
             case 'h':
-            default:
                 print_usage(argv[0]);
 #ifdef _WIN32
                 WSACleanup();
 #endif
                 return 0;
+            default:
+                print_usage(argv[0]);
+#ifdef _WIN32
+                WSACleanup();
+#endif
+                return 1;
         }
     }
 
@@ -1040,7 +1066,7 @@ int main(int argc, char *argv[]) {
     }
 
     printf("============================================================\n");
-    printf("* bb-fast (Netflix Fast.com High Performance Edition)\n");
+    printf("* bb-fast v%s (Netflix Fast.com High Performance Edition)\n", APP_VERSION);
     if (strlen(g_client.ip) > 0) {
         printf("* Client: %s | ISP: %s (ASN: %s)\n", g_client.ip, g_client.isp, g_client.asn);
     }

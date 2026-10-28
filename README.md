@@ -81,12 +81,13 @@ Options:
   -u <url>           Custom speedtest URL
   -s <index>         Specify server index from -L list (e.g. 1)
   -L                 List nearby Fast.com servers and their latencies
-  -U                 Enable full test (download then upload)
-  --only-upload      Upload test only
+  -U, --upload       Enable full test (download then upload)
+  -O, --only-upload  Upload test only
   -t <threads>       Number of concurrent streams (Default: 4)
   -d <seconds>       Test duration in seconds per stage (Default: 10)
   -b <bytes>         Chunk / block size in bytes (Default: 26,214,400 / 25MB)
   -T <sec>           Connection & request timeout in seconds (Default: 10)
+  -v, --version      Show version information and exit
   -h, --help         Show help message and exit
 ```
 

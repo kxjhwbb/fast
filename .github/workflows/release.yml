@@ -11,20 +11,50 @@ permissions:
 
 jobs:
   build-linux-x86_64:
-    name: Build Linux (x86_64)
-    runs-on: ubuntu-latest
+    name: Build Linux (x86_64 Musl Static)
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Install Dependencies
+      - name: Install Musl Toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config libssl-dev zlib1g-dev libzstd-dev
+          sudo apt-get install -y build-essential musl-tools
+          sudo ln -sf /usr/include/linux /usr/include/x86_64-linux-musl/linux
+          sudo ln -sf /usr/include/asm-generic /usr/include/x86_64-linux-musl/asm-generic
+          sudo ln -sf /usr/include/x86_64-linux-gnu/asm /usr/include/x86_64-linux-musl/asm
 
-      - name: Compile Static Binary
+      - name: Restore Cached OpenSSL for x86_64 Musl
+        id: cache-openssl-musl
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/openssl-musl-x86_64
+          key: openssl-3.2-musl-x86_64-u22
+
+      - name: Build Static OpenSSL with Musl
+        if: steps.cache-openssl-musl.outputs.cache-hit != 'true'
         run: |
-          gcc -O3 -flto -fomit-frame-pointer -Wall fast.c -o bb-fast-linux-x86_64 -static -lssl -lcrypto -latomic -lz -lzstd -lpthread -ldl
+          git clone --depth 1 -b openssl-3.2 https://github.com/openssl/openssl.git openssl-src
+          cd openssl-src
+          CC=musl-gcc ./Configure linux-x86_64 \
+            no-shared no-tests no-docs no-legacy no-engine no-ui-console \
+            --prefix=$GITHUB_WORKSPACE/openssl-musl-x86_64 \
+            --openssldir=$GITHUB_WORKSPACE/openssl-musl-x86_64
+          make -j$(nproc) build_libs
+          make install_dev
+          cd ..
+
+      - name: Compile True Static Binary with Musl
+        run: |
+          musl-gcc -O3 -flto -fomit-frame-pointer -Wall \
+            -I$GITHUB_WORKSPACE/openssl-musl-x86_64/include \
+            fast.c \
+            $GITHUB_WORKSPACE/openssl-musl-x86_64/lib64/libssl.a \
+            $GITHUB_WORKSPACE/openssl-musl-x86_64/lib64/libcrypto.a \
+            -o bb-fast-linux-x86_64 \
+            -static -lpthread
+
           strip bb-fast-linux-x86_64
           chmod +x bb-fast-linux-x86_64
           file bb-fast-linux-x86_64
@@ -38,7 +68,7 @@ jobs:
 
   build-linux-cross:
     name: Build Linux (${{ matrix.arch }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
@@ -92,6 +122,7 @@ jobs:
 
       - name: Install Cross Toolchain
         run: |
+          sudo add-apt-repository universe -y || true
           sudo apt-get update
           sudo apt-get install -y build-essential ${{ matrix.cross_pkg }}
 
@@ -100,7 +131,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/openssl-target
-          key: openssl-3.2-v2-${{ matrix.arch }}-${{ matrix.target }}-${{ matrix.openssl_target }}-${{ matrix.openssl_asm_flag }}
+          key: openssl-3.2-u22-${{ matrix.arch }}-${{ matrix.target }}-${{ matrix.openssl_target }}-${{ matrix.openssl_asm_flag }}
 
       - name: Build Static OpenSSL for Target Architecture
         if: steps.cache-openssl.outputs.cache-hit != 'true'
@@ -174,7 +205,7 @@ jobs:
 
   build-windows:
     name: Build Windows (${{ matrix.arch }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
@@ -216,7 +247,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/openssl-target
-          key: openssl-win-3.2-v2-${{ matrix.arch }}-${{ matrix.target }}-${{ matrix.openssl_asm_flag }}
+          key: openssl-win-3.2-u22-${{ matrix.arch }}-${{ matrix.target }}-${{ matrix.openssl_asm_flag }}
 
       - name: Build Static OpenSSL for Windows
         if: steps.cache-openssl-win.outputs.cache-hit != 'true'
@@ -258,7 +289,7 @@ jobs:
     name: Create GitHub Release
     needs: [build-linux-x86_64, build-linux-cross, build-macos, build-windows]
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
